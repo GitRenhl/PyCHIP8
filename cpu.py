@@ -64,7 +64,7 @@ class CPU:
             'PC': uint16(0x0000),
         }
 
-        # TODO use uint16 insted of (bool * 16) and save key state as single bite
+        # TODO: use uint16 insted of (bool * 16) and save key state as single bite
         self.key_input = (c_bool * 16)()
         self.screen = [0] * 64 * 32
 
@@ -117,17 +117,17 @@ class CPU:
         }
 
     def reset(self):
-        zero = 0x0
+        ZERO = 0x0
 
         for i in range(len(self.registers['V'])):
-            self.registers['V'][i] = zero
-        self.registers['I'].value = zero
-        self.registers['SP'].value = zero
+            self.registers['V'][i] = ZERO
+        self.registers['I'].value = ZERO
+        self.registers['SP'].value = ZERO
         self.registers['PC'].value = self._START_PROGRAM_ADDR.value
 
         self.stack.clear()
-        self.timer["delay"] = zero
-        self.timer["sound"] = zero
+        self.timer["delay"] = ZERO
+        self.timer["sound"] = ZERO
 
     def load_rom(self, rom_path, offset=_START_PROGRAM_ADDR):
         print(f'Loading rom from: "{rom_path}"')
@@ -141,17 +141,21 @@ class CPU:
                 exit()
             self.bus.write(uint16(offset.value + i), data)
 
-    def cycle(self):
-        addr = self.registers['PC']
-        data1 = self.bus.read(addr)
-        addr.value += 1
-        data2 = self.bus.read(addr)
-        del addr
+    def get_opcode(self):
+        """ This method load opcode from memory.
+        It also move PC two places along"""
+        program_counter = self.registers['PC']
 
-        self.opcode = uint16((data1.value << 4) | data2.value)
+        opcode1 = self.bus.read(program_counter).value
+        program_counter.value += 1
+        opcode2 = self.bus.read(program_counter).value
+        program_counter.value += 1
+
+        self.opcode.value = opcode1 << 8 | opcode2
         print(self.opcode)
 
-        self.registers['PC'].value += 2
+    def cycle(self):
+        self.get_opcode()
 
         if self.timer['delay'] > 0:
             self.timer['delay'] -= 1
