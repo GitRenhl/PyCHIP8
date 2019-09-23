@@ -46,6 +46,7 @@ class CPU:
     _START_PROGRAM_ADDR = uint16(0x200)
     _ETI_PROGRAM_ADDR = uint16(0x600)
     _END_RAM_ADDR = uint16(0xFFF)
+    _SCREEN_SIZE = (64, 32)
 
     class Error:
         class UnknownOpcodeException(Exception):
@@ -71,7 +72,7 @@ class CPU:
 
         # TODO: use uint16 insted of (bool * 16) and save key state as single bite
         self.key_input = (c_bool * 16)()
-        self.screen = [0] * 64 * 32
+        self.screen = [0] * self._SCREEN_SIZE[0] * self._SCREEN_SIZE[1]
 
         self.stack = []  # ??
         self.timer = {
@@ -251,10 +252,12 @@ class CPU:
             raise self.Error.UnknownOpcodeException(hex(self.opcode.value))
 
     def _00E0(self):
-        pass
+        self.screen.clear()
+        self.screen.append(0)
+        self.screen *= self._SCREEN_SIZE[0] * self._SCREEN_SIZE[1]
 
     def _00EE(self):
-        pass
+        self.registers['PC'].value = self.stack.pop()
 
     def _1NNN(self):
         pass
