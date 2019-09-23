@@ -266,46 +266,115 @@ class CPU:
         pass
 
     def _3XNN(self):
-        pass
+        # Skips the next instruction if VX equals NN
+        reg = (self.opcode.value & 0x0f00) >> 8
+        value = self.opcode.value & 0x00ff
+        if self.registers['V'][reg] == value:
+            self.registers['PC'].value += 2
 
     def _4XNN(self):
-        pass
+        # Skips the next instruction if VX doesn't equals NN
+        reg = (self.opcode.value & 0x0f00) >> 8
+        value = self.opcode.value & 0x00ff
+        if self.registers['V'][reg] != value:
+            self.registers['PC'].value += 2
 
     def _5XY0(self):
-        pass
+        # Skips the next instruction if VX equals VY
+        reg1 = (self.opcode.value & 0x0f00) >> 8
+        reg2 = (self.opcode.value & 0x00f0) >> 4
+        if self.registers['V'][reg1] == self.registers['V'][reg2]:
+            self.registers['PC'].value += 2
 
     def _6XNN(self):
-        pass
+        # Sets VX to NN
+        reg = (self.opcode.value & 0x0f00) >> 8
+        value = self.opcode.value & 0x00ff
+        self.registers['V'][reg] = value
 
     def _7XNN(self):
-        pass
+        # Adds VX to NN (Carry flag is not changed)
+        reg = (self.opcode.value & 0x0f00) >> 8
+        value = self.opcode.value & 0x00ff
+        self.registers['V'][reg] += value
 
     def _8XY0(self):
-        pass
+        # Sets VX to the value of VY
+        reg1 = (self.opcode.value & 0x0f00) >> 8
+        reg2 = (self.opcode.value & 0x00f0) >> 4
+        self.registers['V'][reg1] += self.registers['V'][reg2]
 
     def _8XY1(self):
-        pass
+        # Sets VX to VX or VY
+        reg1 = (self.opcode.value & 0x0f00) >> 8
+        reg2 = (self.opcode.value & 0x00f0) >> 4
+
+        regs = self.registers['V']
+        regs[reg1] |= regs[reg2]
 
     def _8XY2(self):
-        pass
+        # Sets VX to VX and VY
+        reg1 = (self.opcode.value & 0x0f00) >> 8
+        reg2 = (self.opcode.value & 0x00f0) >> 4
+
+        regs = self.registers['V']
+        regs[reg1] &= regs[reg2]
 
     def _8XY3(self):
-        pass
+        # Sets VX to VX xor VY
+        reg1 = (self.opcode.value & 0x0f00) >> 8
+        reg2 = (self.opcode.value & 0x00f0) >> 4
+
+        regs = self.registers['V']
+        regs[reg1] ^= regs[reg2]
 
     def _8XY4(self):
-        pass
+        # Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't
+        reg1 = (self.opcode.value & 0x0f00) >> 8
+        reg2 = (self.opcode.value & 0x00f0) >> 4
+        regs = self.registers['V']
+        if regs[reg1] + regs[reg2] > 0xff:
+            regs[0xf] = 1
+        else:
+            regs[0xf] = 0
+        regs[reg1] += regs[reg2]
 
     def _8XY5(self):
-        pass
+        # VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there isn't
+        reg1 = (self.opcode.value & 0x0f00) >> 8
+        reg2 = (self.opcode.value & 0x00f0) >> 4
+        regs = self.registers['V']
+        if regs[reg1] < regs[reg2]:
+            regs[0xf] = 1
+        else:
+            regs[0xf] = 0
+        regs[reg1] -= regs[reg2]
 
     def _8XY6(self):
-        pass
+        # Stores the least significant bit of VX in VF and then shifts VX to the right by 1
+        reg = (self.opcode.value & 0x0f00) >> 8
+        regs = self.registers['V']
+        regs[0xf] = regs[reg] & 0x0001
+        regs[reg] >>= 1
 
     def _8XY7(self):
-        pass
+        # Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't
+        reg1 = (self.opcode.value & 0x0f00) >> 8
+        reg2 = (self.opcode.value & 0x00f0) >> 4
+        regs = self.registers['V']
+        if regs[reg1] > regs[reg2]:
+            regs[0xf] = 1
+        else:
+            regs[0xf] = 0
+
+        regs[reg1] = regs[reg2] - regs[reg2]
 
     def _8XYE(self):
-        pass
+        #  	Stores the most significant bit of VX in VF and then shifts VX to the left by 1
+        reg = (self.opcode.value & 0x0f00) >> 8
+        regs = self.registers['V']
+        regs[0xf] = regs[reg] & 0x0001
+        regs[reg] <<= 1
 
     def _9XY0(self):
         pass
@@ -358,5 +427,5 @@ class CPU:
 
 if __name__ == "__main__":
     a = CPU()
-    a.load_rom("games\\GUESS")
+    a.load_rom("games\\GUESS.ch8")
     a.cycle()
