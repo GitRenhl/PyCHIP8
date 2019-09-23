@@ -39,11 +39,18 @@ class CPU:
         "stack",
         "timer",
         "opcode",
+        "_operators",
+        "_logical",
         "instructions",
     )
     _START_PROGRAM_ADDR = uint16(0x200)
     _ETI_PROGRAM_ADDR = uint16(0x600)
     _END_RAM_ADDR = uint16(0xFFF)
+
+    class Error:
+        class UnknownOpcodeException(Exception):
+            def __init__(self, opcode):
+                Exception.__init__(self, f"Unknown opcode: {opcode}")
 
     def __init__(self):
         """
@@ -52,8 +59,6 @@ class CPU:
         [1 x 16-bit] (I) - index register
         [1 x 16-bit] (SP) - stack pointer
         [1 x 16-bit] (PC) - program counter
-        [1 x 8-bit] (DT) - delay timer
-        [1 x 8-bit] (ST) - sound time
         """
         self.bus = Bus(0x0FFF, self)
 
@@ -101,9 +106,39 @@ class CPU:
         self.reset()
         self.opcode = uint16(0x0000)
 
+        self._operators = {
+            0x0: self._0NNN,             # SYS  nnn
+            0x1: self._1NNN,             # JUMP nnn
+            0x2: self._2NNN,             # CALL nnn
+            0x3: self._3XNN,             # SKE  Vx nn
+            0x4: self._4XNN,             # SKNE Vx nn
+            0x5: self._5XY0,             # SKE  Vx Vy
+            0x6: self._6XNN,             # LOAD Vx nn
+            0x7: self._7XNN,             # ADD  Vx nn
+            0x8: self._execute_logical,  # Logical
+            0x9: self._9XY0,             # SKNE Vx Vy
+            0xA: self._ANNN,             # LOAD I nnn
+            0xB: self._BNNN,             # JUMP [I] + nnn
+            0xC: self._CXNN,             # RAND Vy nn
+            0xD: self._DXYN,             # DRAW Vx Vy n
+            0xE: self._keyboard,         # Keyboard
+            0xF: self._other,            # Other
+        }
+
+        self._logical = {
+            0x0: self._8XY0,  # LOAD Vx Vy
+            0x1: self._8XY1,  # OR   Vx Vy
+            0x2: self._8XY2,  # AND  Vx Vy
+            0x3: self._8XY3,  # XOR  Vx Vy
+            0x4: self._8XY4,  # ADD  Vx Vy
+            0x5: self._8XY5,  # SUB  Vx Vy
+            0x6: self._8XY6,  # SHR  Vx Vy
+            0x7: self._8XY7,  # SUBN Vx Vy
+            0xE: self._8XYE,  # SHL  Vx Vy
+        }
+
         # this is temporary
         self.instructions = {
-            "0NNN": self._0NNN,  # Call
             "00E0": self._00E0,  # Display
             "00EE": self._00EE,  # Flow
             "1NNN": self._1NNN,  # Flow
@@ -181,6 +216,9 @@ class CPU:
     def cycle(self):
         self.fetch_opcode()
 
+        operation = (self.opcode.value & 0xf000) >> 12
+        self._operators[operation]()
+
         if self.timer['delay'] > 0:
             self.timer['delay'] -= 1
         if self.timer['sound'] > 0:
@@ -189,8 +227,28 @@ class CPU:
                 # play sound
                 pass
 
-    def _0NNN(self):
+    def _execute_logical(self):
+        operation = self.opcode.value & 0x000f
+        method = self._logical.get(operation)
+        if method is None:
+            raise self.Error.UnknownOpcodeException(hex(self.opcode.value))
+
+        method()
+
+    def _keyboard(self):
         pass
+
+    def _other(self):
+        pass
+
+    def _0NNN(self):
+        operation = self.opcode.value & 0x000f
+        if operation == 0x0000:
+            self._00E0()
+        elif operation == 0x000e:
+            self._00EE()
+        else:
+            raise self.Error.UnknownOpcodeException(hex(self.opcode.value))
 
     def _00E0(self):
         pass
