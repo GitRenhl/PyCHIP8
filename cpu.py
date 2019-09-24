@@ -76,8 +76,8 @@ class CPU:
 
         self.stack = []  # ??
         self.timer = {
-            "delay": 0,
-            "sound": 0
+            "delay": uint8(),
+            "sound": uint8()
         }
 
         font = (0xF0, 0x90, 0x90, 0x90, 0xF0,  # 0
@@ -186,8 +186,8 @@ class CPU:
         self.registers['PC'].value = self._START_PROGRAM_ADDR.value
 
         self.stack.clear()
-        self.timer["delay"] = ZERO
-        self.timer["sound"] = ZERO
+        self.timer["delay"].value = ZERO
+        self.timer["sound"].value = ZERO
 
     def load_rom(self, rom_path, offset=_START_PROGRAM_ADDR):
         print(f'Loading rom from: "{rom_path}"')
@@ -212,7 +212,6 @@ class CPU:
         program_counter.value += 1
 
         self.opcode.value = opcode1 << 8 | opcode2
-        print(self.opcode)
 
     def cycle(self):
         self.fetch_opcode()
@@ -220,11 +219,11 @@ class CPU:
         operation = (self.opcode.value & 0xf000) >> 12
         self._operators[operation]()
 
-        if self.timer['delay'] > 0:
-            self.timer['delay'] -= 1
-        if self.timer['sound'] > 0:
-            self.timer['sound'] -= 1
-            if self.timer['sound'] == 0:
+        if self.timer['delay'].value > 0:
+            self.timer['delay'].value -= 1
+        if self.timer['sound'].value > 0:
+            self.timer['sound'].value -= 1
+            if self.timer['sound'].value == 0:
                 # play sound
                 pass
 
@@ -260,10 +259,11 @@ class CPU:
         self.registers['PC'].value = self.stack.pop()
 
     def _1NNN(self):
-        pass
+        self.registers['PC'].value = self.opcode.value & 0x0fff
 
     def _2NNN(self):
-        pass
+        self.stack.append(self.registers['PC'].value)
+        self.registers['PC'].value = self.opcode.value & 0x0fff
 
     def _3XNN(self):
         # Skips the next instruction if VX equals NN
