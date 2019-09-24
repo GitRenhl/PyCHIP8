@@ -3,6 +3,7 @@ from ctypes import c_uint8 as uint8, \
     c_bool
 
 from bus import Bus
+import random
 
 
 """
@@ -386,16 +387,30 @@ class CPU:
         regs[reg] <<= 1
 
     def _9XY0(self):
-        pass
+        # Skips the next instruction if VX doesn't equal VY
+        # Usually the next instruction is a jump to skip a code block
+        reg1 = (self.opcode.value & 0x0f00) >> 8
+        reg2 = (self.opcode.value & 0x00f0) >> 4
+
+        regs = self.registers['V']
+        if regs[reg1] != regs[reg2]:
+            self.registers['PC'] += 2
 
     def _ANNN(self):
-        pass
+        # Sets I to the address NNN
+        value = self.opcode.value & 0x0fff
+        self.registers['I'].value = value
 
     def _BNNN(self):
-        pass
+        # Jumps to the address NNN plus V0
+        value = self.opcode.value & 0x0fff
+        self.registers['PC'] = value + self.registers['V'][0x0]
 
     def _CXNN(self):
-        pass
+        # Sets VX to the result of a bitwise and operation on a random number and NN
+        reg = (self.opcode.value & 0x0f00) >> 8
+        r_num = random.randint(0, 255)
+        self.registers['V'][reg] = r_num + self.opcode.value & 0x00ff
 
     def _DXYN(self):
         pass
@@ -407,19 +422,32 @@ class CPU:
         pass
 
     def _FX07(self):
-        pass
+        # Sets VX to the value of the delay timer
+        reg = (self.opcode & 0x0f00) >> 8
+        self.registers['V'][reg] = self.timer['delay'].value
 
     def _FX0A(self):
         pass
 
     def _FX15(self):
-        pass
+        # Sets the delay timer to VX
+        reg = (self.opcode & 0x0f00) >> 8
+        self.timer['delay'].value = self.registers['V'][reg]
 
     def _FX18(self):
-        pass
+        # Sets the sound timer to VX
+        reg = (self.opcode & 0x0f00) >> 8
+        self.timer['sound'].value = self.registers['V'][reg]
 
     def _FX1E(self):
-        pass
+        # Adds VX to I
+        reg = (self.opcode & 0x0f00) >> 8
+        regV = self.registers['V']
+        if self.registers['I'].value + regV[reg] > 0xffff:
+            regV[0xf] = 1
+        else:
+            regV[0xf] = 0
+        self.registers['I'].value += regV[reg]
 
     def _FX29(self):
         pass
