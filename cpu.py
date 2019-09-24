@@ -41,7 +41,7 @@ class CPU:
         "opcode",
         "_operators",
         "_logical",
-        "instructions",
+        "_instructions",
     )
     _START_PROGRAM_ADDR = uint16(0x200)
     _ETI_PROGRAM_ADDR = uint16(0x600)
@@ -139,7 +139,7 @@ class CPU:
         }
 
         # this is temporary
-        self.instructions = {
+        self._instructions = {
             "00E0": self._00E0,  # Display
             "00EE": self._00EE,  # Flow
             "1NNN": self._1NNN,  # Flow
@@ -191,15 +191,24 @@ class CPU:
 
     def load_rom(self, rom_path, offset=_START_PROGRAM_ADDR):
         print(f'Loading rom from: "{rom_path}"')
-        with open(rom_path, 'rb') as file:
-            rom = file.read()
+        if rom_path[-4:] != ".ch8":
+            print("[Error] Invalid file type")
+            return False
+        try:
+            with open(rom_path, 'rb') as file:
+                rom = file.read()
+        except Exception as e:
+            print(e)
+            return False
 
         for i, value in enumerate(rom):
             data = uint8(value)
             if value != data.value:
                 print(f"[ERROR] Invalid data value: {value} {hex(value)}")
-                exit()
+                return False
             self.bus.write(uint16(offset.value + i), data)
+
+        return True
 
     def fetch_opcode(self):
         """ This method load opcode from memory.
@@ -427,5 +436,8 @@ class CPU:
 
 if __name__ == "__main__":
     a = CPU()
-    a.load_rom("games\\GUESS.ch8")
+    valid = a.load_rom("games\\GUESS.ch8")
+    if not valid:
+        exit()
+
     a.cycle()
