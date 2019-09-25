@@ -31,6 +31,43 @@ Memory Map:
 """
 
 
+class Opcode:
+    def __init__(self, value):
+        self._opcode = uint16(value)
+
+    @property
+    def value(self):
+        return self._opcode.value
+
+    @value.setter
+    def value(self, value):
+        self._opcode.value = value
+
+    @property
+    def p(self):
+        return self._opcode.value >> 12
+
+    @property
+    def Vx(self):
+        return (self._opcode.value & 0x0f00) >> 8
+
+    @property
+    def Vy(self):
+        return (self._opcode.value & 0x00f0) >> 4
+
+    @property
+    def n(self):
+        return self._opcode.value & 0x000f
+
+    @property
+    def kk(self):
+        return self._opcode.value & 0x00ff
+
+    @property
+    def nnn(self):
+        return self._opcode.value & 0x0fff
+
+
 class CPU:
     __slots__ = (
         "bus",
@@ -40,6 +77,8 @@ class CPU:
         "stack",
         "timer",
         "opcode",
+        "_value_Vx",
+        "_value_Vy",
         "_operators",
         "_logical",
         "_instructions",
@@ -109,7 +148,9 @@ class CPU:
             self.bus.write(addr, uint8(font[i]))
 
         self.reset()
-        self.opcode = uint16(0x0000)
+        self.opcode = Opcode(0x0000)
+        self._value_Vx = self.registers['V'][self.opcode.Vx]
+        self._value_Vy = self.registers['V'][self.opcode.Vy]
 
         self._operators = {
             0x0: self._0NNN,             # SYS  nnn
@@ -225,10 +266,11 @@ class CPU:
         program_counter.value += 1
 
         self.opcode.value = opcode1 << 8 | opcode2
+        self._value_Vx = self.registers['V'][self.opcode.Vx]
+        self._value_Vy = self.registers['V'][self.opcode.Vy]
 
     def _execute_ins(self):
-        operation = (self.opcode.value & 0xf000) >> 12
-        self._operators[operation]()
+        self._operators[self.opcode.p]()
 
     def cycle(self):
         self._fetch_opcode()
@@ -243,8 +285,7 @@ class CPU:
                 pass
 
     def _execute_logical(self):
-        operation = self.opcode.value & 0x000f
-        method = self._logical.get(operation)
+        method = self._logical.get(self.opcode.n)
         if method is None:
             raise self.Error.UnknownOpcodeException(hex(self.opcode.value))
 
@@ -257,10 +298,9 @@ class CPU:
         pass
 
     def _0NNN(self):
-        operation = self.opcode.value & 0x000f
-        if operation == 0x0000:
+        if self.opcode.kk == 0x00e0:
             self._00E0()
-        elif operation == 0x000e:
+        elif self.opcode.kk == 0x00ee:
             self._00EE()
         else:
             raise self.Error.UnknownOpcodeException(hex(self.opcode.value))
@@ -274,148 +314,114 @@ class CPU:
         self.registers['PC'].value = self.stack.pop()
 
     def _1NNN(self):
-        self.registers['PC'].value = self.opcode.value & 0x0fff
+        self.registers['PC'].value = self.opcode.nnn
 
     def _2NNN(self):
         self.stack.append(self.registers['PC'].value)
-        self.registers['PC'].value = self.opcode.value & 0x0fff
+        self.registers['PC'].value = self.opcode.nnn
 
     def _3XNN(self):
         # Skips the next instruction if VX equals NN
-        reg = (self.opcode.value & 0x0f00) >> 8
-        value = self.opcode.value & 0x00ff
-        if self.registers['V'][reg] == value:
+        if self._value_Vx == self.opcode.kk:
             self.registers['PC'].value += 2
 
     def _4XNN(self):
         # Skips the next instruction if VX doesn't equals NN
-        reg = (self.opcode.value & 0x0f00) >> 8
-        value = self.opcode.value & 0x00ff
-        if self.registers['V'][reg] != value:
+        if self._value_Vx != self.opcode.kk:
             self.registers['PC'].value += 2
 
     def _5XY0(self):
         # Skips the next instruction if VX equals VY
-        reg1 = (self.opcode.value & 0x0f00) >> 8
-        reg2 = (self.opcode.value & 0x00f0) >> 4
-        if self.registers['V'][reg1] == self.registers['V'][reg2]:
+        if self._value_Vx == self._value_Vy:
             self.registers['PC'].value += 2
 
     def _6XNN(self):
         # Sets VX to NN
-        reg = (self.opcode.value & 0x0f00) >> 8
-        value = self.opcode.value & 0x00ff
-        self.registers['V'][reg] = value
+        self.registers['V'][self.opcode.Vx] = self.opcode.kk
 
     def _7XNN(self):
         # Adds VX to NN (Carry flag is not changed)
-        reg = (self.opcode.value & 0x0f00) >> 8
-        value = self.opcode.value & 0x00ff
-        self.registers['V'][reg] += value
+        self.registers['V'][self.opcode.Vx] += self.opcode.kk
 
     def _8XY0(self):
         # Sets VX to the value of VY
-        reg1 = (self.opcode.value & 0x0f00) >> 8
-        reg2 = (self.opcode.value & 0x00f0) >> 4
-        self.registers['V'][reg1] += self.registers['V'][reg2]
+        regV = self.registers['V']
+        regV[self.opcode.Vx] = self._value_Vy
 
     def _8XY1(self):
         # Sets VX to VX or VY
-        reg1 = (self.opcode.value & 0x0f00) >> 8
-        reg2 = (self.opcode.value & 0x00f0) >> 4
-
-        regs = self.registers['V']
-        regs[reg1] |= regs[reg2]
+        regV = self.registers['V']
+        regV[self.opcode.Vx] |= self._value_Vy
 
     def _8XY2(self):
         # Sets VX to VX and VY
-        reg1 = (self.opcode.value & 0x0f00) >> 8
-        reg2 = (self.opcode.value & 0x00f0) >> 4
-
-        regs = self.registers['V']
-        regs[reg1] &= regs[reg2]
+        regV = self.registers['V']
+        regV[self.opcode.Vx] &= self._value_Vy
 
     def _8XY3(self):
         # Sets VX to VX xor VY
-        reg1 = (self.opcode.value & 0x0f00) >> 8
-        reg2 = (self.opcode.value & 0x00f0) >> 4
-
-        regs = self.registers['V']
-        regs[reg1] ^= regs[reg2]
+        regV = self.registers['V']
+        regV[self.opcode.Vx] ^= self._value_Vy
 
     def _8XY4(self):
         # Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't
-        reg1 = (self.opcode.value & 0x0f00) >> 8
-        reg2 = (self.opcode.value & 0x00f0) >> 4
-        regs = self.registers['V']
-        if regs[reg1] + regs[reg2] > 0xff:
-            regs[0xf] = 1
+        regV = self.registers['V']
+        if self._value_Vx + self._value_Vy > 0xff:
+            regV[0xf] = 1
         else:
-            regs[0xf] = 0
-        regs[reg1] += regs[reg2]
+            regV[0xf] = 0
+        regV[self.opcode.Vx] += self._value_Vy
 
     def _8XY5(self):
         # VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there isn't
-        reg1 = (self.opcode.value & 0x0f00) >> 8
-        reg2 = (self.opcode.value & 0x00f0) >> 4
-        regs = self.registers['V']
-        if regs[reg1] < regs[reg2]:
-            regs[0xf] = 1
+        regV = self.registers['V']
+        if self._value_Vx < self._value_Vy:
+            regV[0xf] = 1
         else:
-            regs[0xf] = 0
-        regs[reg1] -= regs[reg2]
+            regV[0xf] = 0
+        regV[self.opcode.Vx] -= self._value_Vy
 
     def _8XY6(self):
         # Stores the least significant bit of VX in VF and then shifts VX to the right by 1
-        reg = (self.opcode.value & 0x0f00) >> 8
-        regs = self.registers['V']
-        regs[0xf] = regs[reg] & 0x0001
-        regs[reg] >>= 1
+        regV = self.registers['V']
+        regV[0xf] = self._value_Vx & 0x0001
+        regV[self.opcode.Vx] >>= 1
 
     def _8XY7(self):
         # Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't
-        reg1 = (self.opcode.value & 0x0f00) >> 8
-        reg2 = (self.opcode.value & 0x00f0) >> 4
-        regs = self.registers['V']
-        if regs[reg1] > regs[reg2]:
-            regs[0xf] = 1
+        regV = self.registers['V']
+        if self._value_Vx > self._value_Vy:
+            regV[0xf] = 1
         else:
-            regs[0xf] = 0
+            regV[0xf] = 0
 
-        regs[reg1] = regs[reg2] - regs[reg2]
+        regV[self.opcode.Vx] = self._value_Vy - self._value_Vx
 
     def _8XYE(self):
-        #  	Stores the most significant bit of VX in VF and then shifts VX to the left by 1
-        reg = (self.opcode.value & 0x0f00) >> 8
-        regs = self.registers['V']
-        regs[0xf] = regs[reg] & 0x0001
-        regs[reg] <<= 1
+        # Stores the most significant bit of VX in VF and then shifts VX to the left by 1
+        regV = self.registers['V']
+        regV[0xf] = self._value_Vx >> 7
+        regV[self.opcode.Vx] <<= 1
 
     def _9XY0(self):
         # Skips the next instruction if VX doesn't equal VY
         # Usually the next instruction is a jump to skip a code block
-        reg1 = (self.opcode.value & 0x0f00) >> 8
-        reg2 = (self.opcode.value & 0x00f0) >> 4
-
-        regs = self.registers['V']
-        if regs[reg1] != regs[reg2]:
+        if self._value_Vx != self._value_Vy:
             self.registers['PC'] += 2
 
     def _ANNN(self):
         # Sets I to the address NNN
-        value = self.opcode.value & 0x0fff
-        self.registers['I'].value = value
+        self.registers['I'].value = self.opcode.nnn
 
     def _BNNN(self):
         # Jumps to the address NNN plus V0
-        value = self.opcode.value & 0x0fff
-        self.registers['PC'] = value + self.registers['V'][0x0]
+        self.registers['PC'] = self.opcode.nnn + self.registers['V'][0x0]
 
     def _CXNN(self):
         # Sets VX to the result of a bitwise and operation on a random number and NN
-        reg = (self.opcode.value & 0x0f00) >> 8
         r_num = random.randint(0, 255)
-        self.registers['V'][reg] = r_num + self.opcode.value & 0x00ff
+        regV = self.registers['V']
+        regV[self.opcode.Vx] = r_num + self.opcode.kk
 
     def _DXYN(self):
         pass
@@ -428,53 +434,46 @@ class CPU:
 
     def _FX07(self):
         # Sets VX to the value of the delay timer
-        reg = (self.opcode & 0x0f00) >> 8
-        self.registers['V'][reg] = self.timer['delay'].value
+        regV = self.registers['V']
+        regV[self.opcode.Vx] = self.timer['delay'].value
 
     def _FX0A(self):
         pass
 
     def _FX15(self):
         # Sets the delay timer to VX
-        reg = (self.opcode & 0x0f00) >> 8
-        self.timer['delay'].value = self.registers['V'][reg]
+        self.timer['delay'].value = self._value_Vx
 
     def _FX18(self):
         # Sets the sound timer to VX
-        reg = (self.opcode & 0x0f00) >> 8
-        self.timer['sound'].value = self.registers['V'][reg]
+        self.timer['sound'].value = self._value_Vx
 
     def _FX1E(self):
         # Adds VX to I
-        reg = (self.opcode & 0x0f00) >> 8
-        regV = self.registers['V']
-        if self.registers['I'].value + regV[reg] > 0xffff:
-            regV[0xf] = 1
+        regI = self.registers['I']
+        if regI.value + self._value_Vx > 0x0fff:
+            self.registers['V'][0xf] = 1
         else:
-            regV[0xf] = 0
-        self.registers['I'].value += regV[reg]
+            self.registers['V'][0xf] = 0
+        regI.value = (regI.value + self._value_Vx) & 0x0fff
 
     def _FX29(self):
         # Sets I to the location of the sprite for the character in VX
-        reg1 = (self.opcode & 0x0f00) >> 8
-        regV = self.registers['V']
-        self.registers['I'].value = (regV[reg1] * 5)
+        self.registers['I'].value = (self._value_Vx * 5)
 
     def _FX33(self):
         # Stores the BCD decimal representation of VX,
         #  with the most significant of three digits at the address in I,
         #  the middle digit at I plus 1,
         #  the least significant digit at I plus 2
-        reg1 = (self.opcode & 0x0f00) >> 8
-        regV = self.registers['V']
         regI = self.registers['I']
-        regI.value = regV[reg1] // 100 << 8
-        regI.value += regV[reg1] % 100 // 10 << 4
-        regI.value += regV[reg1] % 10
+        regI.value = self._value_Vx // 100 << 8
+        regI.value += self._value_Vx % 100 // 10 << 4
+        regI.value += self._value_Vx % 10
 
     def _FX55(self):
         # Stores V0 to VX (including VX) in memory starting at address I
-        size = (self.opcode & 0x0f00) >> 8 + 1
+        size = self._value_Vx + 1
         regV = self.registers['V']
         regI = self.registers['I']
 
@@ -486,7 +485,7 @@ class CPU:
 
     def _FX65(self):
         # Fills V0 to VX (including VX) with values from memory starting at address I
-        size = (self.opcode & 0x0f00) >> 8 + 1
+        size = self._value_Vx + 1
         regV = self.registers['V']
         regI = self.registers['I']
 
@@ -494,12 +493,3 @@ class CPU:
             regV[index] = regI.value + index
 
         regI.value += size  # Should I remove it?
-
-
-if __name__ == "__main__":
-    a = CPU()
-    valid = a.load_rom("games\\GUESS.ch8")
-    if not valid:
-        exit()
-
-    a.cycle()
