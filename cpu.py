@@ -81,7 +81,7 @@ class CPU:
         "_value_Vy",
         "_operators",
         "_logical",
-        "_instructions",
+        "_other",
     )
     _START_PROGRAM_ADDR = uint16(0x200)
     _ETI_PROGRAM_ADDR = uint16(0x600)
@@ -168,7 +168,7 @@ class CPU:
             0xC: self._CXNN,             # RAND Vy nn
             0xD: self._DXYN,             # DRAW Vx Vy n
             0xE: self._keyboard,         # Keyboard
-            0xF: self._other,            # Other
+            0xF: self._other_inst,       # Other
         }
 
         self._logical = {
@@ -182,43 +182,16 @@ class CPU:
             0x7: self._8XY7,  # SUBN Vx Vy
             0xE: self._8XYE,  # SHL  Vx Vy
         }
-
-        # this is temporary
-        self._instructions = {
-            "00E0": self._00E0,  # Display
-            "00EE": self._00EE,  # Flow
-            "1NNN": self._1NNN,  # Flow
-            "2NNN": self._2NNN,  # Flow
-            "3XNN": self._3XNN,  # Cond
-            "4XNN": self._4XNN,  # Cond
-            "5XY0": self._5XY0,  # Cond
-            "6XNN": self._6XNN,  # Const
-            "7XNN": self._7XNN,  # Const
-            "8XY0": self._8XY0,  # Assign
-            "8XY1": self._8XY1,  # BitOp
-            "8XY2": self._8XY2,  # BitOp
-            "8XY3": self._8XY3,  # BitOp
-            "8XY4": self._8XY4,  # Math
-            "8XY5": self._8XY5,  # Math
-            "8XY6": self._8XY6,  # BitOp
-            "8XY7": self._8XY7,  # Math
-            "8XYE": self._8XYE,  # BitOp
-            "9XY0": self._9XY0,  # Cond
-            "ANNN": self._ANNN,  # MEM
-            "BNNN": self._BNNN,  # Flow
-            "CXNN": self._CXNN,  # Rand
-            "DXYN": self._DXYN,  # Disp
-            "EX9E": self._EX9E,  # KeyOp
-            "EXA1": self._EXA1,  # KeyOp
-            "FX07": self._FX07,  # Timer
-            "FX0A": self._FX0A,  # KeyOp
-            "FX15": self._FX15,  # Timer
-            "FX18": self._FX18,  # Sound
-            "FX1E": self._FX1E,  # MEM
-            "FX29": self._FX29,  # MEM
-            "FX33": self._FX33,  # BCD
-            "FX55": self._FX55,  # MEM
-            "FX65": self._FX65,  # MEM
+        self._other = {
+            0x07: self._FX07,  # LOAD Vx DELAY
+            0x0A: self._FX0A,  # LD Vx KEY
+            0x15: self._FX15,  # LOAD DT Vx
+            0x18: self._FX18,  # LOAD ST Vx
+            0x1E: self._FX1E,  # ADD  I Vx
+            0x29: self._FX29,  # LOAD I Vx
+            0x33: self._FX33,  # LD BCD Vx
+            0x55: self._FX55,  # STOR [I] Vx
+            0x65: self._FX65,  # LOAD Vx [I]
         }
 
     def reset(self):
@@ -294,8 +267,12 @@ class CPU:
     def _keyboard(self):
         pass
 
-    def _other(self):
-        pass
+    def _other_inst(self):
+        method = self._other.get(self.opcode.kk)
+        if method is None:
+            raise self.Error.UnknownOpcodeException(hex(self.opcode.value))
+
+        method()
 
     def _0NNN(self):
         if self.opcode.kk == 0x00e0:
@@ -306,17 +283,21 @@ class CPU:
             raise self.Error.UnknownOpcodeException(hex(self.opcode.value))
 
     def _00E0(self):
+        # Clear the display
         self.screen.clear()
         self.screen.append(0)
         self.screen *= self._SCREEN_SIZE[0] * self._SCREEN_SIZE[1]
 
     def _00EE(self):
+        # Returns from a subroutine
         self.registers['PC'].value = self.stack.pop()
 
     def _1NNN(self):
+        # Jumps to address NNN
         self.registers['PC'].value = self.opcode.nnn
 
     def _2NNN(self):
+        # Calls subroutine at NNN
         self.stack.append(self.registers['PC'].value)
         self.registers['PC'].value = self.opcode.nnn
 
@@ -364,7 +345,8 @@ class CPU:
         regV[self.opcode.Vx] ^= self._value_Vy
 
     def _8XY4(self):
-        # Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't
+        # Adds VY to VX. VF is set to 1 when there's a carry,
+        #  and to 0 when there isn't
         regV = self.registers['V']
         if self._value_Vx + self._value_Vy > 0xff:
             regV[0xf] = 1
@@ -373,7 +355,9 @@ class CPU:
         regV[self.opcode.Vx] += self._value_Vy
 
     def _8XY5(self):
-        # VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there isn't
+        # VY is subtracted from VX.
+        # VF is set to 0 when there's a borrow,
+        #  and 1 when there isn't
         regV = self.registers['V']
         if self._value_Vx < self._value_Vy:
             regV[0xf] = 1
@@ -382,13 +366,16 @@ class CPU:
         regV[self.opcode.Vx] -= self._value_Vy
 
     def _8XY6(self):
-        # Stores the least significant bit of VX in VF and then shifts VX to the right by 1
+        # Stores the least significant bit of VX in VF
+        #  and then shifts VX to the right by 1
         regV = self.registers['V']
         regV[0xf] = self._value_Vx & 0x0001
         regV[self.opcode.Vx] >>= 1
 
     def _8XY7(self):
-        # Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't
+        # Sets VX to VY minus VX.
+        # VF is set to 0 when there's a borrow,
+        #  and 1 when there isn't
         regV = self.registers['V']
         if self._value_Vx > self._value_Vy:
             regV[0xf] = 1
@@ -398,13 +385,14 @@ class CPU:
         regV[self.opcode.Vx] = self._value_Vy - self._value_Vx
 
     def _8XYE(self):
-        # Stores the most significant bit of VX in VF and then shifts VX to the left by 1
+        # Stores the most significant bit of VX in VF
+        #  and then shifts VX to the left by 1
         regV = self.registers['V']
         regV[0xf] = self._value_Vx >> 7
         regV[self.opcode.Vx] <<= 1
 
     def _9XY0(self):
-        # Skips the next instruction if VX doesn't equal VY
+        # Skips the next instruction if VX doesn't equal VY.
         # Usually the next instruction is a jump to skip a code block
         if self._value_Vx != self._value_Vy:
             self.registers['PC'] += 2
@@ -418,7 +406,8 @@ class CPU:
         self.registers['PC'] = self.opcode.nnn + self.registers['V'][0x0]
 
     def _CXNN(self):
-        # Sets VX to the result of a bitwise and operation on a random number and NN
+        # Sets VX to the result of a bitwise and operation
+        #  on a random number and NN
         r_num = random.randint(0, 255)
         regV = self.registers['V']
         regV[self.opcode.Vx] = r_num + self.opcode.kk
@@ -484,7 +473,8 @@ class CPU:
         regI.value += size  # Should I remove it?
 
     def _FX65(self):
-        # Fills V0 to VX (including VX) with values from memory starting at address I
+        # Fills V0 to VX (including VX) with values
+        #  from memory starting at address I
         size = self._value_Vx + 1
         regV = self.registers['V']
         regI = self.registers['I']
