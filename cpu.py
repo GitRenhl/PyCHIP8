@@ -62,7 +62,7 @@ class CPU:
         [1 x 16-bit] (SP) - stack pointer
         [1 x 16-bit] (PC) - program counter
         """
-        self.bus = Bus(0x0FFF, self)
+        self.bus = Bus(0x1000, self)
 
         self.registers = {
             'V': (uint8 * 16)(),
@@ -73,9 +73,12 @@ class CPU:
 
         # TODO: use uint16 insted of (bool * 16) and save key state as single bite
         self.key_input = (c_bool * 16)()
+
+        # TODO: Change [0] to uint8 or char
         self.screen = [0] * self._SCREEN_SIZE[0] * self._SCREEN_SIZE[1]
 
-        self.stack = []  # ??
+        # TODO: Change to uint8 * 12 (or 16)
+        self.stack = []
         self.timer = {
             "delay": uint8(),
             "sound": uint8()
@@ -211,7 +214,7 @@ class CPU:
 
         return True
 
-    def fetch_opcode(self):
+    def _fetch_opcode(self):
         """ This method load opcode from memory.
         It also move PC two places along"""
         program_counter = self.registers['PC']
@@ -223,11 +226,13 @@ class CPU:
 
         self.opcode.value = opcode1 << 8 | opcode2
 
-    def cycle(self):
-        self.fetch_opcode()
-
+    def _execute_ins(self):
         operation = (self.opcode.value & 0xf000) >> 12
         self._operators[operation]()
+
+    def cycle(self):
+        self._fetch_opcode()
+        self._execute_ins()
 
         if self.timer['delay'].value > 0:
             self.timer['delay'].value -= 1
