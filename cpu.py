@@ -450,16 +450,45 @@ class CPU:
         self.registers['I'].value += regV[reg]
 
     def _FX29(self):
-        pass
+        # Sets I to the location of the sprite for the character in VX
+        reg1 = (self.opcode & 0x0f00) >> 8
+        regV = self.registers['V']
+        self.registers['I'].value = (regV[reg1] * 5)
 
     def _FX33(self):
-        pass
+        # Stores the BCD decimal representation of VX,
+        #  with the most significant of three digits at the address in I,
+        #  the middle digit at I plus 1,
+        #  the least significant digit at I plus 2
+        reg1 = (self.opcode & 0x0f00) >> 8
+        regV = self.registers['V']
+        regI = self.registers['I']
+        regI.value = regV[reg1] // 100 << 8
+        regI.value += regV[reg1] % 100 // 10 << 4
+        regI.value += regV[reg1] % 10
 
     def _FX55(self):
-        pass
+        # Stores V0 to VX (including VX) in memory starting at address I
+        size = (self.opcode & 0x0f00) >> 8 + 1
+        regV = self.registers['V']
+        regI = self.registers['I']
+
+        for index in range(size):
+            address = uint16(regI.value + index)
+            self.bus.write(address, regV[index])
+
+        regI.value += size  # Should I remove it?
 
     def _FX65(self):
-        pass
+        # Fills V0 to VX (including VX) with values from memory starting at address I
+        size = (self.opcode & 0x0f00) >> 8 + 1
+        regV = self.registers['V']
+        regI = self.registers['I']
+
+        for index in range(size):
+            regV[index] = regI.value + index
+
+        regI.value += size  # Should I remove it?
 
 
 if __name__ == "__main__":
