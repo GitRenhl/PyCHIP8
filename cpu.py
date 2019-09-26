@@ -395,7 +395,7 @@ class CPU:
         # Skips the next instruction if VX doesn't equal VY.
         # Usually the next instruction is a jump to skip a code block
         if self._value_Vx != self._value_Vy:
-            self.registers['PC'] += 2
+            self.registers['PC'].value += 2
 
     def _ANNN(self):
         # Sets I to the address NNN
@@ -455,31 +455,30 @@ class CPU:
         #  with the most significant of three digits at the address in I,
         #  the middle digit at I plus 1,
         #  the least significant digit at I plus 2
-        regI = self.registers['I']
-        regI.value = self._value_Vx // 100 << 8
-        regI.value += self._value_Vx % 100 // 10 << 4
-        regI.value += self._value_Vx % 10
+        address = uint16(self.registers['I'].value)
+        self.bus.write(address, uint8(self._value_Vx // 100 << 8))
+        address.value += 1
+        self.bus.write(address, uint8(self._value_Vx % 100 // 10 << 4))
+        address.value += 1
+        self.bus.write(address, uint8(self._value_Vx % 10))
 
     def _FX55(self):
         # Stores V0 to VX (including VX) in memory starting at address I
-        size = self._value_Vx + 1
+        size = self.opcode.Vx + 1
         regV = self.registers['V']
         regI = self.registers['I']
 
         for index in range(size):
-            address = uint16(regI.value + index)
-            self.bus.write(address, regV[index])
-
-        regI.value += size  # Should I remove it?
+            self.bus.write(regI, uint8(regV[index]))
+            regI.value += 1
 
     def _FX65(self):
         # Fills V0 to VX (including VX) with values
         #  from memory starting at address I
-        size = self._value_Vx + 1
+        size = self.opcode.Vx + 1
         regV = self.registers['V']
         regI = self.registers['I']
 
         for index in range(size):
-            regV[index] = regI.value + index
-
-        regI.value += size  # Should I remove it?
+            regV[index] = self.bus.read(regI)
+            regI.value += 1
