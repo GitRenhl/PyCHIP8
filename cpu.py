@@ -395,7 +395,7 @@ class CPU:
         #  and 1 when there isn't
         LOG.debug(f"[8XY5] SUB Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
-        if self._value_Vx < self._value_Vy:
+        if self._value_Vx > self._value_Vy:
             regV[0xf] = 1
         else:
             regV[0xf] = 0
@@ -415,7 +415,7 @@ class CPU:
         #  and 1 when there isn't
         LOG.debug(f"[8XY7] SUBN Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
-        if self._value_Vx > self._value_Vy:
+        if self._value_Vy > self._value_Vx:
             regV[0xf] = 1
         else:
             regV[0xf] = 0
@@ -445,7 +445,7 @@ class CPU:
     def _BNNN(self):
         # Jumps to the address NNN plus V0
         LOG.debug(f"[BNNN] JP V0({self.registers['V'][0x0]}), addr({self.opcode.nnn})")
-        self.registers['PC'] = self.opcode.nnn + self.registers['V'][0x0]
+        self.registers['PC'].value = self.opcode.nnn + self.registers['V'][0x0]
 
     def _CXNN(self):
         # Sets VX to the result of a bitwise and operation
@@ -534,9 +534,9 @@ class CPU:
         #  the least significant digit at I plus 2
         LOG.debug(f"[FX33] LD BCD Vx[{self.opcode.Vx}, {self._value_Vx}]")
         address = uint16(self.registers['I'].value)
-        self.bus.write(address, uint8(self._value_Vx // 100 << 8))
+        self.bus.write(address, uint8(self._value_Vx // 100))
         address.value += 1
-        self.bus.write(address, uint8(self._value_Vx % 100 // 10 << 4))
+        self.bus.write(address, uint8(self._value_Vx % 100 // 10))
         address.value += 1
         self.bus.write(address, uint8(self._value_Vx % 10))
 
