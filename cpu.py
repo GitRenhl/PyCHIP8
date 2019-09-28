@@ -4,7 +4,21 @@ from ctypes import c_uint8 as uint8, \
 
 from bus import Bus
 import random
+import logging
+# import time
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(levelname)s: %(module)s|%(name)s: %(message)s",
+    # handlers=[
+    #     logging.FileHandler(
+    #         "logs/log_{0.tm_year}{0.tm_mon}{0.tm_mday}.log".format(
+    #             time.localtime())
+    #     ),
+    #     logging.StreamHandler()
+    # ]
+)
+LOG = logging.getLogger('CPU')
 
 """
 Memory Map:
@@ -211,7 +225,7 @@ class CPU:
         self.clear_display()
 
     def load_rom(self, rom_path, offset=_START_PROGRAM_ADDR):
-        print(f'Loading rom from: "{rom_path}"')
+        LOG.info(f'Loading rom from: "{rom_path}"')
         if rom_path[-4:] != ".ch8":
             print("[Error] Invalid file type")
             return False
@@ -278,6 +292,7 @@ class CPU:
         method()
 
     def clear_display(self):
+        LOG.debug("Clear the display")
         for i in range(len(self.screen)):
             self.screen[i] = 0x00
         self.is_drawing = True
@@ -292,67 +307,81 @@ class CPU:
 
     def _00E0(self):
         # Clear the display
+        LOG.debug("CLS")
         self.clear_display()
 
     def _00EE(self):
         # Returns from a subroutine
+        LOG.debug("[00EE] RET")
         self.registers['PC'].value = self.stack.pop()
 
     def _1NNN(self):
         # Jumps to address NNN
+        LOG.debug(f"[1NNN] JP NNN({self.opcode.nnn})")
         self.registers['PC'].value = self.opcode.nnn
 
     def _2NNN(self):
         # Calls subroutine at NNN
+        LOG.debug(f"[2NNN] CALL NNN({self.opcode.nnn})")
         self.stack.append(self.registers['PC'].value)
         self.registers['PC'].value = self.opcode.nnn
 
     def _3XNN(self):
         # Skips the next instruction if VX equals NN
+        LOG.debug(f"[3XNN] SE Vx({self.opcode.Vx}, {self._value_Vx}), NN({self.opcode.kk})")
         if self._value_Vx == self.opcode.kk:
             self.registers['PC'].value += 2
 
     def _4XNN(self):
         # Skips the next instruction if VX doesn't equals NN
+        LOG.debug(f"[4XNN] SNE Vx({self.opcode.Vx}, {self._value_Vx}), NN({self.opcode.kk})")
         if self._value_Vx != self.opcode.kk:
             self.registers['PC'].value += 2
 
     def _5XY0(self):
         # Skips the next instruction if VX equals VY
+        LOG.debug(f"[5XY0] SE Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         if self._value_Vx == self._value_Vy:
             self.registers['PC'].value += 2
 
     def _6XNN(self):
         # Sets VX to NN
+        LOG.debug(f"[4XNN] LD Vx({self.opcode.Vx}, {self._value_Vx}), NN({self.opcode.kk})")
         self.registers['V'][self.opcode.Vx] = self.opcode.kk
 
     def _7XNN(self):
         # Adds VX to NN (Carry flag is not changed)
+        LOG.debug(f"[7XNN] ADD Vx({self.opcode.Vx}, {self._value_Vx}), NN({self.opcode.kk})")
         self.registers['V'][self.opcode.Vx] += self.opcode.kk
 
     def _8XY0(self):
         # Sets VX to the value of VY
+        LOG.debug(f"[8XY1] LD Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
         regV[self.opcode.Vx] = self._value_Vy
 
     def _8XY1(self):
         # Sets VX to VX or VY
+        LOG.debug(f"[8XY1] OR Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
         regV[self.opcode.Vx] |= self._value_Vy
 
     def _8XY2(self):
         # Sets VX to VX and VY
+        LOG.debug(f"[8XY2] AND Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
         regV[self.opcode.Vx] &= self._value_Vy
 
     def _8XY3(self):
         # Sets VX to VX xor VY
+        LOG.debug(f"[8XY3] XOR Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
         regV[self.opcode.Vx] ^= self._value_Vy
 
     def _8XY4(self):
         # Adds VY to VX. VF is set to 1 when there's a carry,
         #  and to 0 when there isn't
+        LOG.debug(f"[8XY4] ADD Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
         if self._value_Vx + self._value_Vy > 0xff:
             regV[0xf] = 1
@@ -364,6 +393,7 @@ class CPU:
         # VY is subtracted from VX.
         # VF is set to 0 when there's a borrow,
         #  and 1 when there isn't
+        LOG.debug(f"[8XY5] SUB Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
         if self._value_Vx < self._value_Vy:
             regV[0xf] = 1
@@ -374,6 +404,7 @@ class CPU:
     def _8XY6(self):
         # Stores the least significant bit of VX in VF
         #  and then shifts VX to the right by 1
+        LOG.debug(f"[8XY6] SHR Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
         regV[0xf] = self._value_Vx & 0x0001
         regV[self.opcode.Vx] >>= 1
@@ -382,6 +413,7 @@ class CPU:
         # Sets VX to VY minus VX.
         # VF is set to 0 when there's a borrow,
         #  and 1 when there isn't
+        LOG.debug(f"[8XY7] SUBN Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
         if self._value_Vx > self._value_Vy:
             regV[0xf] = 1
@@ -393,6 +425,7 @@ class CPU:
     def _8XYE(self):
         # Stores the most significant bit of VX in VF
         #  and then shifts VX to the left by 1
+        LOG.debug(f"[8XYE] SHL Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         regV = self.registers['V']
         regV[0xf] = self._value_Vx >> 7
         regV[self.opcode.Vx] <<= 1
@@ -400,20 +433,24 @@ class CPU:
     def _9XY0(self):
         # Skips the next instruction if VX doesn't equal VY.
         # Usually the next instruction is a jump to skip a code block
+        LOG.debug(f"[9XY0] SKNE Vx({self.opcode.Vx}, {self._value_Vx}), VY({self.opcode.Vy}, {self._value_Vy})")
         if self._value_Vx != self._value_Vy:
             self.registers['PC'].value += 2
 
     def _ANNN(self):
         # Sets I to the address NNN
+        LOG.debug(f"[ANNN] LOAD I[{self.registers['I'].value}] nnn[{self.opcode.nnn}]")
         self.registers['I'].value = self.opcode.nnn
 
     def _BNNN(self):
         # Jumps to the address NNN plus V0
+        LOG.debug(f"[BNNN] JP V0({self.registers['V'][0x0]}), addr({self.opcode.nnn})")
         self.registers['PC'] = self.opcode.nnn + self.registers['V'][0x0]
 
     def _CXNN(self):
         # Sets VX to the result of a bitwise and operation
         #  on a random number and NN
+        LOG.debug(f"[CXNN] RAND Vx nn[{self.opcode.kk}]")
         r_num = random.randint(0, 255)
         regV = self.registers['V']
         regV[self.opcode.Vx] = r_num & self.opcode.kk
@@ -421,6 +458,7 @@ class CPU:
     def _DXYN(self):
         # Display n-byte sprite starting at memory location I
         #  at (Vx, Vy), set VF = collision
+        LOG.debug(f"[DXYN] DRAW Vx({self.opcode.Vx}, {self._value_Vx}) Vy({self.opcode.Vy}, {self._value_Vy}) nibble({self.opcode.n})")
 
         self.registers['V'][0xf] = 0
         pos = self._value_Vx, self._value_Vy
@@ -457,6 +495,7 @@ class CPU:
 
     def _FX07(self):
         # Sets VX to the value of the delay timer
+        LOG.debug(f"[FX07] LOAD Vx[{self.opcode.Vx}, {self._value_Vx}] DELAY[{self.timer['delay'].value}]")
         regV = self.registers['V']
         regV[self.opcode.Vx] = self.timer['delay'].value
 
@@ -465,14 +504,17 @@ class CPU:
 
     def _FX15(self):
         # Sets the delay timer to VX
+        LOG.debug(f"[FX16] LOAD DT Vx[{self.opcode.Vx}, {self._value_Vx}]")
         self.timer['delay'].value = self._value_Vx
 
     def _FX18(self):
         # Sets the sound timer to VX
+        LOG.debug(f"[FX18] LOAD ST Vx[{self.opcode.Vx}, {self._value_Vx}]")
         self.timer['sound'].value = self._value_Vx
 
     def _FX1E(self):
         # Adds VX to I
+        LOG.debug(f"[FX1E] ADD  I[{self.registers['I'].value}] Vx[{self.opcode.Vx}, {self._value_Vx}]")
         regI = self.registers['I']
         if regI.value + self._value_Vx > 0x0fff:
             self.registers['V'][0xf] = 1
@@ -482,13 +524,15 @@ class CPU:
 
     def _FX29(self):
         # Sets I to the location of the sprite for the character in VX
-        self.registers['I'].value = (self._value_Vx * 5)
+        LOG.debug(f"[FX29] LOAD I[{self.registers['I'].value}] Vx[{self.opcode.Vx}, {self._value_Vx}]")
+        self.registers['I'].value = self._value_Vx * 5
 
     def _FX33(self):
         # Stores the BCD decimal representation of VX,
         #  with the most significant of three digits at the address in I,
         #  the middle digit at I plus 1,
         #  the least significant digit at I plus 2
+        LOG.debug(f"[FX33] LD BCD Vx[{self.opcode.Vx}, {self._value_Vx}]")
         address = uint16(self.registers['I'].value)
         self.bus.write(address, uint8(self._value_Vx // 100 << 8))
         address.value += 1
@@ -498,6 +542,7 @@ class CPU:
 
     def _FX55(self):
         # Stores V0 to VX (including VX) in memory starting at address I
+        LOG.debug(f"[FX55] STOR [I][{self.registers['I'].value}] Vx[{self.opcode.Vx}, {self._value_Vx}]")
         size = self.opcode.Vx + 1
         regV = self.registers['V']
         regI = self.registers['I']
@@ -509,6 +554,7 @@ class CPU:
     def _FX65(self):
         # Fills V0 to VX (including VX) with values
         #  from memory starting at address I
+        LOG.debug(f"[FX65] LOAD Vx[{self.opcode.Vx}, {self._value_Vx}] [I][{self.registers['I'].value}]")
         size = self.opcode.Vx + 1
         regV = self.registers['V']
         regI = self.registers['I']
