@@ -82,6 +82,7 @@ class CPU:
         "_operators",
         "_logical",
         "_other",
+        "is_drawing"
     )
     _START_PROGRAM_ADDR = uint16(0x200)
     _ETI_PROGRAM_ADDR = uint16(0x600)
@@ -110,11 +111,10 @@ class CPU:
             'PC': uint16(0x0000),
         }
 
-        # TODO: use uint16 insted of (bool * 16) and save key state as single bite
+        # TODO: use uint16 insted of (bool * 16) and save key state as single bit
         self.key_input = (c_bool * 16)()
 
-        # TODO: Change [0] to uint8 or char
-        self.screen = [0] * self._SCREEN_SIZE[0] * self._SCREEN_SIZE[1]
+        self.screen = (uint8 * (self._SCREEN_SIZE[0] * self._SCREEN_SIZE[1]))()
 
         # TODO: Change to uint8 * 12 (or 16)
         self.stack = []
@@ -147,7 +147,9 @@ class CPU:
             addr.value = i
             self.bus.write(addr, uint8(font[i]))
 
+        self.is_drawing = False
         self.reset()
+
         self.opcode = Opcode(0x0000)
         self._value_Vx = self.registers['V'][self.opcode.Vx]
         self._value_Vy = self.registers['V'][self.opcode.Vy]
@@ -206,6 +208,7 @@ class CPU:
         self.stack.clear()
         self.timer["delay"].value = ZERO
         self.timer["sound"].value = ZERO
+        self.clear_display()
 
     def load_rom(self, rom_path, offset=_START_PROGRAM_ADDR):
         print(f'Loading rom from: "{rom_path}"')
@@ -274,6 +277,11 @@ class CPU:
 
         method()
 
+    def clear_display(self):
+        for i in range(len(self.screen)):
+            self.screen[i] = 0x00
+        self.is_drawing = True
+
     def _0NNN(self):
         if self.opcode.kk == 0x00e0:
             self._00E0()
@@ -284,9 +292,7 @@ class CPU:
 
     def _00E0(self):
         # Clear the display
-        self.screen.clear()
-        self.screen.append(0)
-        self.screen *= self._SCREEN_SIZE[0] * self._SCREEN_SIZE[1]
+        self.clear_display()
 
     def _00EE(self):
         # Returns from a subroutine
@@ -410,10 +416,38 @@ class CPU:
         #  on a random number and NN
         r_num = random.randint(0, 255)
         regV = self.registers['V']
-        regV[self.opcode.Vx] = r_num + self.opcode.kk
+        regV[self.opcode.Vx] = r_num & self.opcode.kk
 
     def _DXYN(self):
-        pass
+        # Display n-byte sprite starting at memory location I
+        #  at (Vx, Vy), set VF = collision
+
+        self.registers['V'][0xf] = 0
+        pos = self._value_Vx, self._value_Vy
+        n_bytes = self.opcode.n  # height
+        regI = self.registers['I']
+
+        for y_offset in range(n_bytes):
+            row = self.bus.read(uint16(regI.value + y_offset)).value
+            for x_offset in range(8):
+                x = pos[0] + x_offset-1
+                y = pos[1] + y_offset
+                if x >= self._SCREEN_SIZE[0] or y >= self._SCREEN_SIZE[1]:
+                    continue
+
+                location = y * self._SCREEN_SIZE[0] + x
+                mask = 1 << 8 - x_offset
+                curr_pixel = (row & mask) >> (8 - x_offset)
+                try:
+                    self.screen[location] ^= curr_pixel
+                except IndexError as e:
+                    print(e, location, curr_pixel, self.opcode.value)
+                # print(location, curr_pixel)
+                if self.screen[location] == 0:
+                    self.registers['V'][0xf] = 1
+                else:
+                    self.registers['V'][0xf] = 0
+        self.is_drawing = True
 
     def _EX9E(self):
         pass
