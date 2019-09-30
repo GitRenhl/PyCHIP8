@@ -107,6 +107,24 @@ class CPU:
         class UnknownOpcodeException(Exception):
             def __init__(self, opcode):
                 Exception.__init__(self, f"Unknown opcode: {opcode}")
+    KEY_MAP = {
+        0x0: 0b0010000000000000,
+        0x1: 0b0000000000000001,
+        0x2: 0b0000000000000010,
+        0x3: 0b0000000000000100,
+        0x4: 0b0000000000010000,
+        0x5: 0b0000000000100000,
+        0x6: 0b0000000001000000,
+        0x7: 0b0000000100000000,
+        0x8: 0b0000001000000000,
+        0x9: 0b0000010000000000,
+        0xa: 0b0001000000000000,
+        0xb: 0b0100000000000000,
+        0xc: 0b0000000000001000,
+        0xd: 0b0000000010000000,
+        0xe: 0b0000100000000000,
+        0xf: 0b1000000000000000
+    }
 
     def __init__(self):
         """
@@ -125,8 +143,7 @@ class CPU:
             'PC': uint16(0x0000),
         }
 
-        # TODO: use uint16 insted of (bool * 16) and save key state as single bit
-        self.key_input = (c_bool * 16)()
+        self.key_input = uint16()
 
         self.screen = (uint8 * (self._SCREEN_SIZE[0] * self._SCREEN_SIZE[1]))()
 
@@ -290,6 +307,22 @@ class CPU:
             raise self.Error.UnknownOpcodeException(hex(self.opcode.value))
 
         method()
+
+    def is_key_pressed(self, key):
+        if key > 0xf:
+            return False
+        else:
+            return self.key_input.value & self.KEY_MAP.get(key) != 0
+
+    def press_key(self, key):
+        if self.is_key_pressed(key):
+            return
+        self.key_input.value ^= self.KEY_MAP.get(key, 0)
+
+    def release_key(self, key):
+        if not self.is_key_pressed(key):
+            return
+        self.key_input.value ^= self.KEY_MAP.get(key, 0)
 
     def clear_display(self):
         LOG.debug("Clear the display")
@@ -488,10 +521,16 @@ class CPU:
         self.is_drawing = True
 
     def _EX9E(self):
-        pass
+        # Skips the next instruction if the key stored in VX is pressed.
+        LOG.debug(f"[EX9E] SKPR Vx({self.opcode.Vx}, {self._value_Vx})")
+        if self.is_key_pressed(self._value_Vx):
+            self.registers['PC'].value += 2
 
     def _EXA1(self):
-        pass
+        # Skips the next instruction if the key stored in VX isn't pressed.
+        LOG.debug(f"[EXA1] SKUP Vx({self.opcode.Vx}, {self._value_Vx})")
+        if not self.is_key_pressed(self._value_Vx):
+            self.registers['PC'].value += 2
 
     def _FX07(self):
         # Sets VX to the value of the delay timer
@@ -500,7 +539,14 @@ class CPU:
         regV[self.opcode.Vx] = self.timer['delay'].value
 
     def _FX0A(self):
-        pass
+        # A key press is awaited, and then stored in VX
+        LOG.debug(f"[FX0A] LD Vx[{self.opcode.Vx}, {self._value_Vx}] KEY")
+        if self.key_input.value > 0:
+            for key in self.KEY_MAP:
+                if self.is_key_pressed(key):
+                    return key
+        else:
+            self.registers['PC'].value -= 2
 
     def _FX15(self):
         # Sets the delay timer to VX
