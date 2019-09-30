@@ -244,19 +244,19 @@ class CPU:
     def load_rom(self, rom_path, offset=_START_PROGRAM_ADDR):
         LOG.info(f'Loading rom from: "{rom_path}"')
         if rom_path[-4:] != ".ch8":
-            print("[Error] Invalid file type")
+            LOG.error("Invalid file type")
             return False
         try:
             with open(rom_path, 'rb') as file:
                 rom = file.read()
         except Exception as e:
-            print(e)
+            LOG.error(e)
             return False
 
         for i, value in enumerate(rom):
             data = uint8(value)
             if value != data.value:
-                print(f"[ERROR] Invalid data value: {value} {hex(value)}")
+                LOG.error(f"Invalid data value: {value} {hex(value)}")
                 return False
             self.bus.write(uint16(offset.value + i), data)
 
