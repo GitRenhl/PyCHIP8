@@ -512,9 +512,10 @@ class CPU:
                 try:
                     self.screen[location] ^= curr_pixel
                 except IndexError as e:
-                    print(e, location, curr_pixel, self.opcode.value)
-                # print(location, curr_pixel)
-                if self.screen[location] == 0:
+                    LOG.error(f"{e} ({location}, {curr_pixel}, {self.opcode.value})")
+                    exit()
+
+                if self.screen[location] == 0 and curr_pixel:
                     self.registers['V'][0xf] = 1
                 else:
                     self.registers['V'][0xf] = 0
